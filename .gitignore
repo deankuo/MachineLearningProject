@@ -1,3 +1,8 @@
 # Personal
 .DS_Store
 .env
+data/
+.claude/
+
+# Notebooks
+*.ipynb

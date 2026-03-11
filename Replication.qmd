@@ -1,0 +1,345 @@
+---
+title: "Replication"
+format: pdf
+author: "Peng-Ting Kuo"
+---
+
+# Introduction
+
+This file is the replication for the paper:
+
+Meijers, M. J., & Zaslove, A. (2021). Measuring Populism in Political Parties: Appraisal of a New Approach. *Comparative Political Studies*, *54*(2), 372-407.
+
+# Setup
+
+```{r Package and Data}
+library(ggplot2)
+library(tidyverse)
+library(haven)
+library(psych)
+
+# Expert level data
+expert <- read_stata("replication/data/expert_data_stata.dta")
+
+# Expert mean data (these two datasets are almost identical)
+expert_mean <- read_stata("replication/data/party_means.dta")
+expert_mean <- readRDS("replication/final_data/poppa1.rds")
+```
+
+# Data Processing
+
+The expert level dataset I have is different from the original one. (Missing peopleimm, peoplewealthy, elitepol, elitemedia, eliteecon, climatepolicy, climatescience, democracy, positionchange, compromise
+
+```{asis Variable Explanation}
+Note 1: The Sweden has been asked at a 1-10 scale.  
+
+Variables:
+complex: Some parties portray political decision-making as a complex process, while others
+advocate common-sense solutions to political problems.
+0 = Not at all complex; 10 = Highly complex
+
+emotional:  Some parties appeal to emotions in their political communication with the voter
+(i.e fear, hope, anger, happiness).
+0 = Not at all; 10 = Very much
+
+# Party Organization
+intradem: Some political parties practice more intra-party democracy than others (i.e. party
+members play a role in decision making, there is room for internal debate, decision-making is
+inclusive of various factions and organizational layers within the party).
+0 = No intra-party democracy at all; 10 = Very high level of intra-party democracy
+
+personalised: Parties can be characterized by more or less personal leadership.
+Please tick the box that best describes each party's degree of personalized leadership.
+0 = Not at all personalized; 10 = Very personalized
+
+# Party Ideology
+lroverall: Please tick the box that best describes each party's overall ideology on a scale
+ranging from 0 (left) to 10 (right) (i.e. the general left-right scale).
+0 = Left; 10 = Right
+
+lrecon: Parties can be classified in terms of their stance on economic issues. Parties on the
+economic left want government to play an active role in the economy. Parties on the economic
+right emphasize a reduced economic role for government: privatization, lower taxes, less
+regulation, less government spending, and a leaner welfare state.
+0 = Economic left; 10 = Economic right
+
+immigration: Some parties are strongly in favour of immigration, while others are strongly
+opposed to immigration.
+0 = Strongly opposed to immigration; 10 = Strongly in favor of immigration
+
+eu: Some parties are strongly in favour of the EU and European integration, while others are
+strongly opposed to the EU and European integration.
+0 = Strongly opposed to the EU; 10 = Strongly in favor of the EU
+
+nativism: Some parties have an exclusive idea of who can and should belong to the nation-
+state (nativism).
+Please tick the box that best describes the extent to which each party regards non-native
+elements (persons or ideas) in society as a threat to the nation’s culture, well-being or
+sovereignty.
+0 = Not at all nativist; 10 = Very nativist
+
+laworder: Parties can be classified in terms of their stance regarding civil liberties (i.e.
+personal freedoms) and law and order (i.e. stricter policing, harsher sentencing).
+Please tick the box that best describes the extent to which each party prioritizes civil liberties or law and order.
+0 = Strongly promotes civil liberties; 10 = Strongly supports law and order
+
+lifestyle: Parties can be classified in terms of their stance regarding social lifestyle. Some hold a traditional view on moral values (such as conventional notions of the family: i.e. marriage and child-rearing), while others hold more liberal views on moral values (i.e. acceptance of homosexuality, same-sex marriage etc.).
+0 = More traditional; 10 = More liberal
+
+# Expert-level question
+gender: 0: male; 1: female, 2: other
+
+self_leftright: Where would you place yourself on the general left-right scale?
+0: left, 10: right
+
+discipline: Please designate your primary academic discipline.
+1 = Political Science.  
+2 = Public Administration (Public Management).  
+3 = Communication Science.  
+4 = Sociology.  
+5 = Law and Legal Studies.  
+6 = History.  
+7 = Other.  
+
+expertise:  Please indicate your research expertise (multiple answers are possible).
+1 = Party Politics.  
+2 = Populism Studies.  
+3 = Radical Right / Left and/or Political Extremism.  
+4 = Voting Behavior. 
+5 = Area Studies.  
+6 = Public Policy.  
+7 = EU Politics.  
+8 = Interest Groups.  
+9 = Political Economy.  
+10 = Social Movements and Protest Politics.  
+11 = International Relations.  
+12 = Political Theory.  
+13 = Political Communication.  
+14 = Law and Politics.  
+15 = Other.  
+```
+
+```{r Data Preprocessing}
+# We only have the clean data 
+# 1. Follow the authors' procedure and rename the wrong column
+expert_dataset <- expert %>%
+  rename(response_id = expert_id,
+         indivisible = indivisble) 
+
+columns <- c("manichean", "indivisible", "generalwill", "peoplecentrism", "antielitism", "lroverall", "lrecon", "immigration", "nativism", "lifestyle", "laworder", "laworder", "eu", "intradem", "personalised", "complex", "emotional")
+
+# 2. reorder the columns
+expert_dataset <- expert_dataset %>%
+  select(
+    response_id, country_id, nr_experts, party, party_id,
+    all_of(columns),                                     
+    everything()                                         
+  )
+```
+
+## Expert-level to Party-level
+
+```{r}
+party_level <- expert_dataset %>%
+  group_by(country_id, party_id) %>%
+  summarise(
+    n_experts = n(),
+    across(manichean:emotional, 
+           ~ if(sum(!is.na(.x)) >= 4) mean(.x, na.rm = TRUE) else NA_real_),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    pop_vars = list(c("manichean", "indivisible", "generalwill", "peoplecentrism", "antielitism")),
+    valid_count = rowSums(!is.na(select(., all_of(pop_vars[[1]])))),
+    populism = ifelse(valid_count >= 4, 
+                      rowMeans(select(., all_of(pop_vars[[1]])), na.rm = TRUE), 
+                      NA_real_)
+  ) %>%
+  select(-pop_vars, -valid_count) %>%
+  relocate(populism, .before = manichean)
+```
+
+```{r Data Aggregation}
+# Load the original data
+fa_df <- read_stata("./replication/Paper/dta_1.dta")
+
+comparison_df <- data.frame(
+  id = 1:nrow(expert_mean),
+  manichean_diff   = party_level$manichean - fa_df$manichean,
+  indivisble_diff  = party_level$indivisible - fa_df$indivisble,
+  generalwill_diff = party_level$generalwill - fa_df$generalwill,
+  peoplecentrism_diff = party_level$peoplecentrism - fa_df$peoplecentrism,
+  antielitism_diff = party_level$antielitism - fa_df$antielitism
+)
+
+comparison_long <- comparison_df %>%
+  pivot_longer(cols = ends_with("_diff"), 
+               names_to = "variable", 
+               values_to = "difference")
+
+# Visualization
+ggplot(comparison_long, aes(x = difference)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white") +
+  facet_wrap(~ variable, scales = "free") + 
+  geom_vline(xintercept = 0, color = "red", linetype = "dashed", alpha = 0.5) +
+  labs(
+    title = "Stata vs R",
+    x = "Expert file - DTA file",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+summary_stats <- comparison_long %>%
+  group_by(variable) %>%
+  summarise(
+    mean_diff = mean(difference, na.rm = TRUE),
+    max_diff  = max(abs(difference), na.rm = TRUE),
+    sd_diff   = sd(difference, na.rm = TRUE)
+  )
+
+print(summary_stats)
+```
+
+# Factor Analysis
+
+Note that the authors use Stata for the table, the result in R is slightly different (around 0.01-0.02).
+
+## Table 2
+
+```{r FA}
+# My version of factor analysis
+fa_df <- expert_mean %>%
+  select(manichean, indivisble, generalwill, peoplecentrism, antielitism) %>%
+  na.omit()
+fit_fa <- factanal(x = fa_df,
+                   factors = 1,
+                   scores = "regression",
+                   rotation = "varimax") # This is the default method
+
+# print(fit_fa)
+
+
+# Author's version of factor analysis (I convert to R version)
+efa_vars_author <- fa_df %>%
+  select(manichean, indivisble, generalwill, peoplecentrism, antielitism) %>%
+  na.omit() 
+
+# The dataset I transfer from expert level
+efa_vars <- party_level %>%
+  select(manichean, indivisible, generalwill, peoplecentrism, antielitism) %>%
+  na.omit() 
+
+# Iterated Principal Factor (IPF)
+## Stata code:
+# use "dta_1.dta", clear
+
+# 	factor  manichean indivisble generalwill peoplecentrism antielitism   , ipf mineigen(1) 
+# 	rotate,  orthogonal varimax
+
+# *Create predicted populism variable
+# 	predict populism_factor	
+# 	gen populism = ((populism_factor - (-1.616698))/ 3.682342) * 10
+
+
+# Stata's ipf' equals to psych's fm = "pa" (Principal Axis)
+efa_result <- fa(efa_vars, 
+                 nfactors = 1,      
+                 fm = "pa",          
+                 max.iter = 50,     
+                 rotate = "varimax")
+
+# factor.loading
+loading <- round(efa_result$loadings, 3)
+print(loading)
+
+# uniqueness
+uniqueness <- round(efa_result$uniquenesses, 3)
+print(uniqueness)
+
+# factor.scores
+scores <- factor.scores(efa_vars, efa_result)$scores
+expert_dataset$populism_factor <- NA
+
+
+# expert_dataset$populism_factor[complete.cases(expert_dataset %>% 
+#                                select(manichean, indivisible, generalwill, peoplecentrism, antielitism))] <- scores[,1]
+
+# 5. regularization ((score - minimum) / distance) * 10
+expert_dataset <- expert_dataset %>%
+  mutate(populism = ((populism_factor - (-1.616698)) / 3.682342) * 10)
+```
+
+## Table 4
+
+The authors' original stata code:
+
+```         
+factor intradem personal manichean indivisble generalwill peoplecentrism antielitism complex emotional lrecon immigration eu nativism laworder lifestyle , ipf 
+rotate, blanks(.5) orthogonal varimax
+```
+
+```{r FA-2}
+# 1. Dataset 
+efa_vars_full <- party_level %>%
+  select(
+    manichean, indivisible, generalwill, peoplecentrism, antielitism, 
+    lrecon, immigration, eu, nativism, laworder, lifestyle,
+    complex, emotional, intradem, personalised
+  ) %>%
+  na.omit()
+
+# mapping label and variable
+name_mapping <- c(
+  "manichean" = "Manichean worldview",
+  "indivisible" = "Indivisible people",
+  "generalwill" = "General will",
+  "peoplecentrism" = "People-centrism",
+  "antielitism" = "Anti-elitism",
+  "lrecon" = "Left-Right (Economy)",
+  "immigration" = "Immigration",
+  "eu" = "European integration",
+  "nativism" = "Nativism",
+  "laworder" = "Civil liberties versus Law & order",
+  "lifestyle" = "Lifestyle: Traditional versus Liberal",
+  "complex" = "Complex versus Common-sense politics",
+  "emotional" = "Emotional appeal",
+  "intradem" = "Intra-party democracy",
+  "personalised" = "Personalized leadership"
+)
+
+# 1. Eigenvalue & cor matrix
+cor_matrix <- cor(efa_vars_full)
+raw_eigenvalues <- eigen(cor_matrix)$values
+
+# number of eigenvalue > 1
+n_to_extract <- sum(raw_eigenvalues > 1)
+
+# 2. Similar to Stata ipf approach
+efa_optimized <- fa(
+  cor_matrix, 
+  nfactors = n_to_extract, 
+  fm = "pa", 
+  rotate = "varimax", 
+  max.iter = 50,
+  SMC = TRUE
+)
+
+
+loadings_df <- as.data.frame(unclass(efa_optimized$loadings))
+
+# mapping names
+loadings_df$Variable_Label <- name_mapping[rownames(loadings_df)]
+
+
+final_paper_table <- loadings_df %>%
+  transmute(
+    Variable = Variable_Label,
+    `Factor I` = ifelse(abs(PA1) < 0.5, "", format(round(PA1, 6), nsmall = 6)),
+    `Factor II` = ifelse(abs(PA2) < 0.5, "", format(round(PA2, 6), nsmall = 6))
+  )
+
+# 5. output
+cat("Factor I  Initial Eigenvalue:", round(raw_eigenvalues[1], 2), "\n")
+cat("Factor II Initial Eigenvalue:", round(raw_eigenvalues[2], 2), "\n\n")
+print(final_paper_table, row.names = FALSE, quote = FALSE)
+```
